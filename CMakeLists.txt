@@ -2,16 +2,34 @@ cmake_minimum_required(VERSION 3.12)
 
 project(
   "matplotlibcpp17"
-  VERSION 1.0.0
+  VERSION 1.0.1
   DESCRIPTION
     "A C++ header-only plotting library based on pybind11 and matplotlib, featuring more flexibility than matplotlibcpp"
   HOMEPAGE_URL "https://soblin.github.io/matplotlibcpp17/")
 
+if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/conan.cmake")
+  message(STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
+  file(DOWNLOAD
+    "https://raw.githubusercontent.com/conan-io/cmake-conan/master/conan.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/conan.cmake"
+    )
+endif()
+include(${CMAKE_CURRENT_BINARY_DIR}/conan.cmake)
+conan_cmake_run(CONANFILE
+                conanfile.py
+                BASIC_SETUP
+                CMAKE_TARGETS
+                KEEP_RPATHS
+                BUILD missing
+                BUILD_TYPE Release
+                )
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_BINARY_DIR})
+find_package(pybind11 2.4.3 REQUIRED COMPONENTS embed)
+
 find_package(
   Python3
-  COMPONENTS Interpreter Development
+  COMPONENTS Interpreter Development NumPy
   REQUIRED)
-find_package(pybind11 2.4.3 REQUIRED)
 
 # check matplotlib minor version
 execute_process(
@@ -56,17 +74,11 @@ set(matplotlibcpp17_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 function(add_demo name path)
   add_executable(${name} ${path})
-  target_include_directories(${name} PUBLIC ${Python3_INCLUDE_DIRS}
-                                            ${matplotlibcpp17_INCLUDE_DIRS})
-  target_link_libraries(${name} ${Python3_LIBRARIES} pybind11::embed xtensor)
+  target_link_libraries(${name} matplotlibcpp17 xtensor)
 endfunction()
 
 if(${ADD_DEMO})
-  find_package(
-    Python3
-    COMPONENTS NumPy
-    REQUIRED)
-  find_package(xtensor 0.24.0 REQUIRED)
+  find_package(xtensor 0.21.0 REQUIRED)
   set(CMAKE_CXX_STANDARD 17)
   set(CMAKE_CXX_FLAGS
       "-Wall -g -DUSE_GUI=${USE_GUI} -DMATPLOTLIB_MINOR_VER_GTE_4=${MATPLOTLIB_MINOR_VER_GTE_4}"
@@ -93,10 +105,19 @@ endif()
 # install https://dominikberner.ch/cmake-interface-lib/
 include(GNUInstallDirs)
 add_library(${PROJECT_NAME} INTERFACE)
+
+target_link_libraries(${PROJECT_NAME} INTERFACE
+  ${Python3_LIBRARIES}
+  CONAN_PKG::pybind11
+  )
+
 target_include_directories(
   ${PROJECT_NAME}
   INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+            ${Python3_INCLUDE_DIRS}
+            )
+
 target_compile_features(${PROJECT_NAME} INTERFACE cxx_std_17)
 install(
   TARGETS ${PROJECT_NAME}
